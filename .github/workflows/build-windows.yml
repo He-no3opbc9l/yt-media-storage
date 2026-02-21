@@ -84,12 +84,6 @@ jobs:
           New-Item -ItemType Directory -Force -Path "${{ env.DEPS_DIR }}\libsodium"
           Copy-Item "$($inner.FullName)\*" "${{ env.DEPS_DIR }}\libsodium\" -Recurse
 
-      - name: Debug libsodium structure
-        shell: pwsh
-        run: |
-          Write-Host "=== libsodium directory structure ==="
-          Get-ChildItem "${{ env.DEPS_DIR }}\libsodium" -Recurse -Depth 3 | Select-Object FullName
-
       # ── MSVC ──────────────────────────────────────────────────────────────
       - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
