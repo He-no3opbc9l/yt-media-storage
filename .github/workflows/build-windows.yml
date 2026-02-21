@@ -20,10 +20,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install pkgconf via chocolatey
+        shell: pwsh
+        run: choco install pkgconfiglite -y
+
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+          vcpkgGitCommitId: '05442024c3fda64320bd25d2251cc9807b84fb6f'
           vcpkgDirectory: C:\vcpkg
 
       - name: Cache vcpkg packages
@@ -39,6 +43,8 @@ jobs:
 
       - name: Install dependencies via vcpkg
         shell: pwsh
+        env:
+          VCPKG_KEEP_ENV_VARS: PATH
         run: |
           C:\vcpkg\vcpkg install `
             ffmpeg:x64-windows `
