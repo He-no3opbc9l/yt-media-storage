@@ -41,7 +41,7 @@ jobs:
         shell: pwsh
         run: |
           C:\vcpkg\vcpkg install `
-            ffmpeg[core,avcodec,avformat,avutil,swscale,swresample]:x64-windows `
+            ffmpeg:x64-windows `
             libsodium:x64-windows `
             qtbase:x64-windows `
             --recurse
