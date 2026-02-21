@@ -13,91 +13,124 @@ jobs:
     runs-on: windows-2022
 
     env:
-      VCPKG_ROOT: C:\vcpkg
-      VCPKG_DEFAULT_TRIPLET: x64-windows
+      FFMPEG_VERSION: '7.1'
+      DEPS_DIR: ${{ github.workspace }}\deps
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install pkgconf via chocolatey
-        shell: pwsh
-        run: choco install pkgconfiglite -y
-
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
+      # ── Qt ────────────────────────────────────────────────────────────────
+      - name: Install Qt 6
+        uses: jurplel/install-qt-action@v4
         with:
-          vcpkgGitCommitId: '05442024c3fda64320bd25d2251cc9807b84fb6f'
-          vcpkgDirectory: C:\vcpkg
+          version: '6.8.2'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+          modules: ''
+          cache: true
 
-      - name: Cache vcpkg packages
+      # ── FFmpeg pre-built (gyan.dev shared build) ─────────────────────────
+      - name: Cache FFmpeg
+        id: cache-ffmpeg
         uses: actions/cache@v4
         with:
-          path: |
-            C:\vcpkg\installed
-            C:\vcpkg\packages
-            C:\vcpkg\buildtrees
-          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', '**/CMakeLists.txt') }}
-          restore-keys: |
-            vcpkg-${{ runner.os }}-
+          path: ${{ env.DEPS_DIR }}\ffmpeg
+          key: ffmpeg-${{ env.FFMPEG_VERSION }}-windows-x64
 
-      - name: Install dependencies via vcpkg
+      - name: Download FFmpeg
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
         shell: pwsh
-        env:
-          VCPKG_KEEP_ENV_VARS: PATH
         run: |
-          C:\vcpkg\vcpkg install `
-            ffmpeg:x64-windows `
-            libsodium:x64-windows `
-            qtbase:x64-windows `
-            --recurse
+          $url = "https://github.com/GyanD/codexffmpeg/releases/download/${{ env.FFMPEG_VERSION }}/ffmpeg-${{ env.FFMPEG_VERSION }}-full_build-shared.zip"
+          $zip = "$env:TEMP\ffmpeg.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath "$env:TEMP\ffmpeg_extracted"
+          $extracted = Get-ChildItem "$env:TEMP\ffmpeg_extracted" -Directory | Select-Object -First 1
+          New-Item -ItemType Directory -Force -Path "${{ env.DEPS_DIR }}\ffmpeg"
+          Copy-Item "$($extracted.FullName)\*" "${{ env.DEPS_DIR }}\ffmpeg\" -Recurse
 
+      # ── libsodium pre-built ───────────────────────────────────────────────
+      - name: Cache libsodium
+        id: cache-sodium
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.DEPS_DIR }}\libsodium
+          key: libsodium-1.0.20-windows-x64
+
+      - name: Download libsodium
+        if: steps.cache-sodium.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $url = "https://download.libsodium.org/libsodium/releases/libsodium-1.0.20-stable-msvc.zip"
+          $zip = "$env:TEMP\libsodium.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath "$env:TEMP\sodium_extracted"
+          New-Item -ItemType Directory -Force -Path "${{ env.DEPS_DIR }}\libsodium"
+          Copy-Item "$env:TEMP\sodium_extracted\*" "${{ env.DEPS_DIR }}\libsodium\" -Recurse
+
+      # ── MSVC ──────────────────────────────────────────────────────────────
       - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
 
+      # ── CMake configure ───────────────────────────────────────────────────
       - name: Configure CMake
         shell: pwsh
         run: |
+          $ffmpeg  = "${{ env.DEPS_DIR }}\ffmpeg"
+          $sodium  = "${{ env.DEPS_DIR }}\libsodium"
+
+          # libsodium: MSVC x64 Release
+          $sodiumInc = "$sodium\include"
+          $sodiumLib = "$sodium\x64\Release\v143\dynamic\libsodium.lib"
+
           cmake -B build `
             -G "Visual Studio 17 2022" -A x64 `
             -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_TOOLCHAIN_FILE="C:\vcpkg\scripts\buildsystems\vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows `
-            -DCMAKE_PREFIX_PATH="C:\vcpkg\installed\x64-windows"
+            -DAVCODEC_INCLUDE_DIR="$ffmpeg\include" `
+            -DAVCODEC_LIBRARY="$ffmpeg\lib\avcodec.lib" `
+            -DAVFORMAT_INCLUDE_DIR="$ffmpeg\include" `
+            -DAVFORMAT_LIBRARY="$ffmpeg\lib\avformat.lib" `
+            -DAVUTIL_INCLUDE_DIR="$ffmpeg\include" `
+            -DAVUTIL_LIBRARY="$ffmpeg\lib\avutil.lib" `
+            -DSWSCALE_INCLUDE_DIR="$ffmpeg\include" `
+            -DSWSCALE_LIBRARY="$ffmpeg\lib\swscale.lib" `
+            -DSWRESAMPLE_INCLUDE_DIR="$ffmpeg\include" `
+            -DSWRESAMPLE_LIBRARY="$ffmpeg\lib\swresample.lib" `
+            -DSODIUM_INCLUDE_DIR="$sodiumInc" `
+            -DSODIUM_LIBRARY="$sodiumLib"
 
+      # ── Build ─────────────────────────────────────────────────────────────
       - name: Build
         shell: pwsh
-        run: |
-          cmake --build build --config Release --parallel
+        run: cmake --build build --config Release --parallel
 
+      # ── Collect artifacts ─────────────────────────────────────────────────
       - name: Collect artifacts
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts
 
-          # Copy executables
-          Copy-Item build\Release\media_storage.exe artifacts\ -ErrorAction SilentlyContinue
+          Copy-Item build\Release\media_storage.exe     artifacts\ -ErrorAction SilentlyContinue
           Copy-Item build\Release\media_storage_gui.exe artifacts\ -ErrorAction SilentlyContinue
 
-          # Deploy Qt DLLs for GUI
-          $qtBinPath = "C:\vcpkg\installed\x64-windows\tools\Qt6\bin"
-          if (Test-Path $qtBinPath) {
-            & "$qtBinPath\windeployqt6.exe" artifacts\media_storage_gui.exe --release --no-translations
-          }
+          # FFmpeg DLLs
+          Copy-Item "${{ env.DEPS_DIR }}\ffmpeg\bin\avcodec*.dll"    artifacts\ -ErrorAction SilentlyContinue
+          Copy-Item "${{ env.DEPS_DIR }}\ffmpeg\bin\avformat*.dll"   artifacts\ -ErrorAction SilentlyContinue
+          Copy-Item "${{ env.DEPS_DIR }}\ffmpeg\bin\avutil*.dll"     artifacts\ -ErrorAction SilentlyContinue
+          Copy-Item "${{ env.DEPS_DIR }}\ffmpeg\bin\swscale*.dll"    artifacts\ -ErrorAction SilentlyContinue
+          Copy-Item "${{ env.DEPS_DIR }}\ffmpeg\bin\swresample*.dll" artifacts\ -ErrorAction SilentlyContinue
 
-          # Copy required runtime DLLs
-          $vcpkgBin = "C:\vcpkg\installed\x64-windows\bin"
-          $dlls = @(
-            "avcodec*.dll", "avformat*.dll", "avutil*.dll",
-            "swscale*.dll", "swresample*.dll",
-            "libsodium.dll"
-          )
-          foreach ($pattern in $dlls) {
-            Copy-Item "$vcpkgBin\$pattern" artifacts\ -ErrorAction SilentlyContinue
-          }
+          # libsodium DLL
+          Copy-Item "${{ env.DEPS_DIR }}\libsodium\x64\Release\v143\dynamic\libsodium.dll" artifacts\ -ErrorAction SilentlyContinue
 
+          # Qt DLLs
+          windeployqt --release --no-translations artifacts\media_storage_gui.exe
+
+      # ── Upload ────────────────────────────────────────────────────────────
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
