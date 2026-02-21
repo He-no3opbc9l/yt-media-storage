@@ -79,8 +79,16 @@ jobs:
           $zip = "$env:TEMP\libsodium.zip"
           Invoke-WebRequest -Uri $url -OutFile $zip
           Expand-Archive -Path $zip -DestinationPath "$env:TEMP\sodium_extracted"
+          # zip contains a nested 'libsodium' folder — flatten it
+          $inner = Get-ChildItem "$env:TEMP\sodium_extracted" -Directory | Select-Object -First 1
           New-Item -ItemType Directory -Force -Path "${{ env.DEPS_DIR }}\libsodium"
-          Copy-Item "$env:TEMP\sodium_extracted\*" "${{ env.DEPS_DIR }}\libsodium\" -Recurse
+          Copy-Item "$($inner.FullName)\*" "${{ env.DEPS_DIR }}\libsodium\" -Recurse
+
+      - name: Debug libsodium structure
+        shell: pwsh
+        run: |
+          Write-Host "=== libsodium directory structure ==="
+          Get-ChildItem "${{ env.DEPS_DIR }}\libsodium" -Recurse -Depth 3 | Select-Object FullName
 
       # ── MSVC ──────────────────────────────────────────────────────────────
       - name: Setup MSVC environment
