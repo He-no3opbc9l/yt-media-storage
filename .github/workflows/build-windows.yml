@@ -134,21 +134,33 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path artifacts
 
-          Copy-Item build\Release\media_storage.exe     artifacts\ -ErrorAction SilentlyContinue
-          Copy-Item build\Release\media_storage_gui.exe artifacts\ -ErrorAction SilentlyContinue
+          # Find built executables (VS generator may put them in various subdirs)
+          Write-Host "=== Searching for built .exe files ==="
+          $exes = Get-ChildItem -Path build -Recurse -Filter "*.exe" | Where-Object {
+            $_.Name -match "media_storage"
+          }
+          $exes | ForEach-Object { Write-Host "Found: $($_.FullName)" }
 
-          # FFmpeg DLLs
-          Copy-Item "${{ env.DEPS_DIR }}\ffmpeg\bin\avcodec*.dll"    artifacts\ -ErrorAction SilentlyContinue
-          Copy-Item "${{ env.DEPS_DIR }}\ffmpeg\bin\avformat*.dll"   artifacts\ -ErrorAction SilentlyContinue
-          Copy-Item "${{ env.DEPS_DIR }}\ffmpeg\bin\avutil*.dll"     artifacts\ -ErrorAction SilentlyContinue
-          Copy-Item "${{ env.DEPS_DIR }}\ffmpeg\bin\swscale*.dll"    artifacts\ -ErrorAction SilentlyContinue
-          Copy-Item "${{ env.DEPS_DIR }}\ffmpeg\bin\swresample*.dll" artifacts\ -ErrorAction SilentlyContinue
+          foreach ($exe in $exes) {
+            Copy-Item $exe.FullName artifacts\
+          }
+
+          # FFmpeg DLLs — copy all from bin (includes dependencies like zlib, etc.)
+          Copy-Item "${{ env.DEPS_DIR }}\ffmpeg\bin\*.dll" artifacts\ -ErrorAction SilentlyContinue
 
           # libsodium DLL
           Copy-Item "${{ env.DEPS_DIR }}\libsodium\x64\Release\v143\dynamic\libsodium.dll" artifacts\ -ErrorAction SilentlyContinue
 
           # Qt DLLs
-          windeployqt --release --no-translations artifacts\media_storage_gui.exe
+          if (Test-Path "artifacts\media_storage_gui.exe") {
+            windeployqt --release --no-translations artifacts\media_storage_gui.exe
+          } else {
+            Write-Host "WARNING: media_storage_gui.exe not found, skipping windeployqt"
+          }
+
+          # Show final artifacts
+          Write-Host "=== Final artifacts ==="
+          Get-ChildItem artifacts\ | ForEach-Object { Write-Host $_.Name }
 
       # ── Upload ────────────────────────────────────────────────────────────
       - name: Upload artifacts
