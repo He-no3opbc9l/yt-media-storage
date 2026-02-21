@@ -20,7 +20,6 @@ project(media_storage LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(PkgConfig REQUIRED)
 find_package(OpenMP REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
 
@@ -29,12 +28,46 @@ set(CMAKE_AUTOMOC OFF)
 set(CMAKE_AUTOUIC OFF)
 set(CMAKE_AUTORCC OFF)
 
-pkg_check_modules(AVCODEC REQUIRED IMPORTED_TARGET libavcodec)
-pkg_check_modules(AVFORMAT REQUIRED IMPORTED_TARGET libavformat)
-pkg_check_modules(AVUTIL REQUIRED IMPORTED_TARGET libavutil)
-pkg_check_modules(SWSCALE REQUIRED IMPORTED_TARGET libswscale)
-pkg_check_modules(SWRESAMPLE REQUIRED IMPORTED_TARGET libswresample)
-pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium)
+# Find FFmpeg components
+find_path(AVCODEC_INCLUDE_DIR libavcodec/avcodec.h)
+find_library(AVCODEC_LIBRARY avcodec)
+find_path(AVFORMAT_INCLUDE_DIR libavformat/avformat.h)
+find_library(AVFORMAT_LIBRARY avformat)
+find_path(AVUTIL_INCLUDE_DIR libavutil/avutil.h)
+find_library(AVUTIL_LIBRARY avutil)
+find_path(SWSCALE_INCLUDE_DIR libswscale/swscale.h)
+find_library(SWSCALE_LIBRARY swscale)
+find_path(SWRESAMPLE_INCLUDE_DIR libswresample/swresample.h)
+find_library(SWRESAMPLE_LIBRARY swresample)
+
+# Find libsodium
+find_path(SODIUM_INCLUDE_DIR sodium.h)
+find_library(SODIUM_LIBRARY libsodium)
+
+# Create imported targets to mimic PkgConfig targets
+add_library(PkgConfig::AVCODEC INTERFACE IMPORTED)
+target_include_directories(PkgConfig::AVCODEC INTERFACE ${AVCODEC_INCLUDE_DIR})
+target_link_libraries(PkgConfig::AVCODEC INTERFACE ${AVCODEC_LIBRARY})
+
+add_library(PkgConfig::AVFORMAT INTERFACE IMPORTED)
+target_include_directories(PkgConfig::AVFORMAT INTERFACE ${AVFORMAT_INCLUDE_DIR})
+target_link_libraries(PkgConfig::AVFORMAT INTERFACE ${AVFORMAT_LIBRARY})
+
+add_library(PkgConfig::AVUTIL INTERFACE IMPORTED)
+target_include_directories(PkgConfig::AVUTIL INTERFACE ${AVUTIL_INCLUDE_DIR})
+target_link_libraries(PkgConfig::AVUTIL INTERFACE ${AVUTIL_LIBRARY})
+
+add_library(PkgConfig::SWSCALE INTERFACE IMPORTED)
+target_include_directories(PkgConfig::SWSCALE INTERFACE ${SWSCALE_INCLUDE_DIR})
+target_link_libraries(PkgConfig::SWSCALE INTERFACE ${SWSCALE_LIBRARY})
+
+add_library(PkgConfig::SWRESAMPLE INTERFACE IMPORTED)
+target_include_directories(PkgConfig::SWRESAMPLE INTERFACE ${SWRESAMPLE_INCLUDE_DIR})
+target_link_libraries(PkgConfig::SWRESAMPLE INTERFACE ${SWRESAMPLE_LIBRARY})
+
+add_library(PkgConfig::SODIUM INTERFACE IMPORTED)
+target_include_directories(PkgConfig::SODIUM INTERFACE ${SODIUM_INCLUDE_DIR})
+target_link_libraries(PkgConfig::SODIUM INTERFACE ${SODIUM_LIBRARY})
 
 add_executable(media_storage)
 add_executable(media_storage_gui)
