@@ -1,0 +1,101 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on Windows 11
+    runs-on: windows-2022
+
+    env:
+      VCPKG_ROOT: C:\vcpkg
+      VCPKG_DEFAULT_TRIPLET: x64-windows
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+          vcpkgDirectory: C:\vcpkg
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\vcpkg\installed
+            C:\vcpkg\packages
+            C:\vcpkg\buildtrees
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', '**/CMakeLists.txt') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-
+
+      - name: Install dependencies via vcpkg
+        shell: pwsh
+        run: |
+          C:\vcpkg\vcpkg install `
+            ffmpeg[core,avcodec,avformat,avutil,swscale,swresample]:x64-windows `
+            libsodium:x64-windows `
+            qtbase:x64-windows `
+            --recurse
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          cmake -B build `
+            -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="C:\vcpkg\scripts\buildsystems\vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DQt6_DIR="C:\vcpkg\installed\x64-windows\share\Qt6" `
+            -DCMAKE_PREFIX_PATH="C:\vcpkg\installed\x64-windows"
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --parallel
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts
+
+          # Copy executables
+          Copy-Item build\Release\media_storage.exe artifacts\ -ErrorAction SilentlyContinue
+          Copy-Item build\Release\media_storage_gui.exe artifacts\ -ErrorAction SilentlyContinue
+
+          # Deploy Qt DLLs for GUI
+          $qtBinPath = "C:\vcpkg\installed\x64-windows\tools\Qt6\bin"
+          if (Test-Path $qtBinPath) {
+            & "$qtBinPath\windeployqt6.exe" artifacts\media_storage_gui.exe --release --no-translations
+          }
+
+          # Copy required runtime DLLs
+          $vcpkgBin = "C:\vcpkg\installed\x64-windows\bin"
+          $dlls = @(
+            "avcodec*.dll", "avformat*.dll", "avutil*.dll",
+            "swscale*.dll", "swresample*.dll",
+            "libsodium.dll"
+          )
+          foreach ($pattern in $dlls) {
+            Copy-Item "$vcpkgBin\$pattern" artifacts\ -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: media-storage-windows-x64
+          path: artifacts\
+          retention-days: 30
