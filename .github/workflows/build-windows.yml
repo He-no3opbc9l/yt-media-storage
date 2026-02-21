@@ -20,6 +20,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Убираем MSYS2/MinGW из PATH чтобы их make/link не конфликтовали с MSVC
+      - name: Remove MSYS2 and MinGW from PATH
+        shell: pwsh
+        run: |
+          $filtered = $env:PATH -split ';' | Where-Object {
+            $_ -notmatch 'msys' -and
+            $_ -notmatch 'mingw' -and
+            $_ -notmatch 'Git\\usr\\bin' -and
+            $_ -notmatch 'Git\\bin'
+          }
+          echo "PATH=$($filtered -join ';')" >> $env:GITHUB_ENV
+
       # ── Qt ────────────────────────────────────────────────────────────────
       - name: Install Qt 6
         uses: jurplel/install-qt-action@v4
